@@ -1,8 +1,8 @@
 const CANVAS = document.querySelector('#screen')
 const CTX = CANVAS.getContext('2d')
-const AUDIO_COLLISION = new Audio('./assets/collision.mp3') 
-const AUDIO_FULLROW = new Audio('./assets/fullrow.mp3')
-const AUDIO_GAMEOVER = new Audio('./assets/gameover.mp3')
+const AUDIO_COLLISION = new Audio('collision.mp3') 
+const AUDIO_FULLROW = new Audio('fullrow.mp3')
+const AUDIO_GAMEOVER = new Audio('gameover.mp3')
 
 let velocity = 200
 let currentPiece = []
