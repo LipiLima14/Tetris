@@ -1,100 +1,226 @@
 const CANVAS = document.querySelector('#screen')
 const CTX = CANVAS.getContext('2d')
+const AUDIO_COLLISION = new Audio('./assets/collision.mp3') 
+const AUDIO_FULLROW = new Audio('./assets/fullrow.mp3')
+const AUDIO_GAMEOVER = new Audio('./assets/gameover.mp3')
 
-let isColision = false
-let rightPiece = 0
-let leftPiece = 0
-let lowestPiece = 0
-let velocity = 300
-let modelBlock = []
+let velocity = 200
+let currentPiece = []
+let frozenPieces = []
+let isGameOver = false
 
-let keys = {
-    right: false,
-    left: false
-}
-
-let blocks = [
-    [{x: 0, y: 0}, {x: 20, y: 0}, {x: 20, y: 20}],
-    [{x: 0, y: 0}, {x: 20, y: 0}, {x: 40, y: 0}, {x: 60, y: 0}],
-    [{x: 0, y: 0}, {x: 20, y: 0}, {x: 40, y: 0}, {x: 20, y:20}]
+const pieces = [
+    [{x:0,y:0},{x:20,y:0},{x:20,y:20}],
+    [{x:0,y:0},{x:20,y:0},{x:40,y:0},{x:60,y:0}],
+    [{x:0,y:0},{x:20,y:0},{x:40,y:0},{x:20,y:20}],
+    [{x:0,y:0},{x:20,y:0},{x:20,y:20}, {x:20,y:40}, {x:0, y:40}],
+    [{x:0,y:0},{x:20,y:0},{x:20,y:20}, {x:20,y:40}],
+    [{x:0,y:0},{x:20,y:0},{x:20,y:20}, {x:0,y:20}],
 ]
 
-let saveBlocks = []
+function clearCanvas() {
+    CTX.clearRect(0, 0, CANVAS.width, CANVAS.height)
+}
 
-function drawBlock(model_block) {
-    let interval = setInterval(() => {
-        CTX.clearRect(0, 0, CANVAS.width, CANVAS.height)
-        if (lowestPiece + 40 >= CANVAS.height) {
-            lowestPiece = 0
-            rightPiece = 0
-            leftPiece = 0
-            clearInterval(interval)
-            saveBlocks.push(model_block)
-            randomBlock()
-            savePositions()
-            return
+function drawBlocks(blocks, color) {
+    CTX.fillStyle = color
+    for (let b of blocks) {
+        CTX.fillRect(b.x, b.y, 20, 20)
+    }
+}
+
+function moveDown() {
+    currentPiece.forEach(p => p.y += 20)
+}
+
+function spawnPiece() {
+    let random = Math.floor(Math.random() * pieces.length)
+    currentPiece = pieces[random].map(p => ({...p}))
+}
+
+function drawGame() {
+    gameOver()
+    if (isGameOver) {
+        AUDIO_GAMEOVER.play()
+        return
+    }
+    clearCanvas()
+    drawBlocks(frozenPieces.flat(), "#e23939ff")
+    drawBlocks(currentPiece, "#2253cfff")
+    clearFullLines()
+}
+
+function update() {
+    if (isGameOver) return
+    if (checkCollision()) {
+        setTimeout(() => {
+            frozenPieces.push(currentPiece)
+            AUDIO_COLLISION.play()
+            spawnPiece()
+        }, 50);
+    } else {
+        moveDown()
+    }
+    drawGame()
+}
+
+function checkCollision() {
+    for (let block of currentPiece) {
+        if (block.y + 20 >= CANVAS.height) return true
+        for (let frozen of frozenPieces.flat()) {
+            if (block.x === frozen.x && block.y + 20 === frozen.y) {
+                return true
+            }
         }
+    }
+    return false
+}
 
-        for (let indice_position = 0; indice_position <= model_block.length; indice_position++) {
-            let positionX = model_block[indice_position].x
-            let positionY = model_block[indice_position].y
-            CTX.fillStyle = '#2253cfff'
-            CTX.fillRect(positionX, positionY, 20, 20)
-
-            if (positionY > lowestPiece) lowestPiece = positionY
-            if (positionX > rightPiece) rightPiece = positionX
-            if (positionY < CANVAS.height) model_block[indice_position].y += 20
+// === Funções auxiliares para verificar limites laterais ===
+function canMoveRight() {
+    for (let block of currentPiece) {
+        if (block.x + 20 >= CANVAS.width) return false
+        for (let frozen of frozenPieces.flat()) {
+            if (block.x + 20 === frozen.x && block.y === frozen.y) {
+                return false
+            }
         }
-    }, velocity)
+    }
+    return true
 }
 
-function randomBlock() {
-    let random = Math.floor(Math.random() * blocks.length)   
-    getModel(blocks[random])
+function canMoveLeft() {
+    for (let block of currentPiece) {
+        if (block.x - 20 < 0) return false
+        for (let frozen of frozenPieces.flat()) {
+            if (block.x - 20 === frozen.x && block.y === frozen.y) {
+                return false
+            }
+        }
+    }
+    return true
 }
 
-function getModel(model) {
-    modelBlock = model.map(p => ({...p}))
-    drawBlock(modelBlock)
-}
+function clearFullLines() {
+    const blockSize = 20
+    const blocksPerRow = CANVAS.width / blockSize
 
-document.addEventListener('keydown', ({ key }) => {
-    if (key == 'ArrowRight' && rightPiece + 20 < CANVAS.width) {
-        keys.right = true
-        movePiece()
+    // pega todos os blocos congelados
+    let allBlocks = frozenPieces.flat()
+
+    // conta quantos blocos tem em cada y
+    let lineCount = {}
+    for (let b of allBlocks) {
+        lineCount[b.y] = (lineCount[b.y] || 0) + 1
     }
 
-    if (key == 'ArrowLeft' && leftPiece > 0) {
-        keys.left = true
-        movePiece()
+    // pega todas as linhas completas
+    let fullLines = Object.keys(lineCount).filter(y => lineCount[y] === blocksPerRow)
+
+    if (fullLines.length > 0) {
+        // transforma para números e ordena de baixo para cima
+        fullLines = fullLines.map(Number).sort((a, b) => b - a)
+
+        for (let line of fullLines) {
+            // remove blocos da linha completa
+            allBlocks = allBlocks.filter(b => b.y !== line)
+
+            // desce blocos que estão acima
+            allBlocks.forEach(b => {
+                if (b.y < line) b.y += blockSize
+            })
+        }
+
+        // reagrupa em peças (cada peça como array de blocos)
+        frozenPieces = groupPieces(allBlocks)
+        AUDIO_FULLROW.play()
+    }
+}
+
+// função auxiliar: reagrupa blocos em "peças" (opcional)
+function groupPieces(blocks) {
+    // aqui, podemos simplesmente colocar todos como uma única peça
+    return [blocks]
+}
+
+
+function rotatePiece() {
+    if (currentPiece.length === 0) return
+
+    // === Pivot = peça de referencia ===
+    let pivot = currentPiece[0]
+    let rotated = currentPiece.map(block => {
+        let x = block.x
+        let y = block.y
+        let cx = pivot.x
+        let cy = pivot.y
+        return {
+            x: cx - (y - cy),
+            y: cy + (x - cx)
+        }
+    })
+    
+    // === Verificando colisão antes de aplicar a rotação ===
+    let isValid = rotated.every(block => {
+        if (block.x < 0 || block.x >= CANVAS.width) return false
+        if (block.y < 0 || block.y >= CANVAS.height) return false
+        for (let frozen of frozenPieces.flat()) {
+            if (block.x === frozen.x && block.y === frozen.y) return false
+        }
+        return true
+    })
+
+    if (isValid) currentPiece = rotated
+}
+
+function gameOver() {
+    let allFrozenPieces = frozenPieces.flat()
+    isGameOver = allFrozenPieces.some(frozen => frozen.y <= 0)
+}
+
+function hardDrop() {
+  if (currentPiece.length === 0) return;
+
+  let minDelta = Infinity; // menor deslocamento possível (em px)
+
+  for (const block of currentPiece) {
+    // distância até o piso
+    let bestForThisBlock = CANVAS.height - (block.y + 20);
+
+    for (const frozen of frozenPieces.flat()) {
+      if (frozen.x === block.x && frozen.y >= block.y + 20) {
+        const distance = frozen.y - (block.y + 20); // quantos px até encostar nesse frozen
+        if (distance < bestForThisBlock) bestForThisBlock = distance;
+      }
+    }
+
+    if (bestForThisBlock < minDelta) minDelta = bestForThisBlock;
+  }
+
+  // aplica o deslocamento em todos os blocos da peça atual
+  currentPiece.forEach(b => b.y += minDelta);
+  AUDIO_COLLISION.play()
+
+  frozenPieces.push(currentPiece.map(p => ({ ...p })));
+  spawnPiece();
+}
+
+// === Controles com checagem de borda ===
+document.addEventListener("keydown", ({key}) => {
+    if (key === "ArrowRight" && canMoveRight()) {
+        currentPiece.forEach(p => p.x += 20)
+    }
+    if (key === "ArrowLeft" && canMoveLeft()) {
+        currentPiece.forEach(p => p.x -= 20)
+    }
+    if (key === "ArrowUp") {
+        hardDrop()
+    }
+    if (key === "z") {
+        rotatePiece()
     }
 })
 
-function movePiece() {
-    if (keys.right === true) {
-        modelBlock.forEach(p => p.x += 20)
-        keys.right = false
-    }
-
-    if (keys.left === true) {
-        modelBlock.forEach(p => p.x -= 20)
-        keys.left = false
-    }
-
-    // recalcular os limites
-    leftPiece = Math.min(...modelBlock.map(p => p.x))
-    rightPiece = Math.max(...modelBlock.map(p => p.x))
-}
-
-function savePositions() {
-    for (let i = 0; i <= saveBlocks.length; i++) {
-        for (let i2 = 0; i2 <= saveBlocks[i].length; i2++) {
-            let px = saveBlocks[i][i2].x
-            let py = saveBlocks[i][i2].y
-            CTX.fillStyle = '#e23939ff'
-            CTX.fillRect(px, py, 20, 20)
-        }
-    }
-}
-
-randomBlock()
+// === iniciar jogo ===
+spawnPiece()
+setInterval(update, velocity)
